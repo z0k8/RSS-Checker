@@ -1,3 +1,4 @@
+
 'use server';
 
 import { z } from 'zod';
@@ -14,6 +15,7 @@ import {
   addProcessedArticleGuid,
   addProcessingLogEntry,
   updateFeed,
+  getProcessingLog, // Added import
 } from '@/lib/config-storage';
 import { summarizeArticle } from '@/ai/flows/summarize-article';
 import { postToWordPress } from '@/lib/wordpress';
@@ -251,3 +253,4 @@ export async function getInitialDashboardData() {
     processingLog,
   };
 }
+

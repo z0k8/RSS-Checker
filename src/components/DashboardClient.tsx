@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { FeedConfig, WordPressConfig, ProcessedArticleLogEntry } from '@/types';
@@ -10,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { Rss, WordPress, Settings, Play, Trash2, Save, ListChecks, AlertTriangle, CheckCircle, Info, Send, Brain } from 'lucide-react';
+import { Rss, Cog, Settings, Play, Trash2, Save, ListChecks, AlertTriangle, CheckCircle, Info, Send, Brain } from 'lucide-react';
 import {
   addFeedAction,
   removeFeedAction,
@@ -163,7 +164,7 @@ export function DashboardClient({ initialFeeds, initialWordPressConfig, initialP
       {/* WordPress Configuration Card */}
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><WordPress size={24} className="text-primary" /> WordPress Configuration</CardTitle>
+          <CardTitle className="flex items-center gap-2"><Cog size={24} className="text-primary" /> WordPress Configuration</CardTitle>
           <CardDescription>Configure your WordPress site details for posting summaries. Application Passwords are recommended.</CardDescription>
         </CardHeader>
         <CardContent>

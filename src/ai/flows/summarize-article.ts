@@ -26,20 +26,22 @@ export async function summarizeArticle(input: SummarizeArticleInput): Promise<Su
   return summarizeArticleFlow(input);
 }
 
-const canSummarizeArticle = ai.defineTool({
-  name: 'canSummarizeArticle',
-  description: 'Determines if an article is suitable for summarization based on length and topic.',
-  inputSchema: z.object({
-    articleContent: z.string().describe('The content of the article.'),
-  }),
-  outputSchema: z.boolean(),
+const canSummarizeArticle = ai.defineTool(
+  {
+    name: 'canSummarizeArticle',
+    description: 'Determines if an article is suitable for summarization based on length and topic.',
+    inputSchema: z.object({
+      articleContent: z.string().describe('The content of the article.'),
+    }),
+    outputSchema: z.boolean(),
+  },
   async (input) => {
     // Basic implementation: check if the article length is within a reasonable range.
     // And the the topic is not something unsummzarible
     const length = input.articleContent.length;
     return length > 200 && length < 10000;
-  },
-});
+  }
+);
 
 const summarizeArticlePrompt = ai.definePrompt({
   name: 'summarizeArticlePrompt',
