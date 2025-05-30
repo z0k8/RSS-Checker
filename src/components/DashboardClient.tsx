@@ -2,8 +2,7 @@
 'use client';
 
 import type { FeedConfig, WordPressConfig, ProcessedArticleLogEntry } from '@/types';
-import React, { useState, useTransition, useEffect } from 'react';
-import { useFormState } from 'react-dom';
+import React, { useState, useTransition, useEffect, useActionState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,8 +56,8 @@ export function DashboardClient({ initialFeeds, initialWordPressConfig, initialP
   }, [initialProcessingLog]);
 
 
-  const [addFeedState, addFeedFormAction] = useFormState(addFeedAction, { success: false });
-  const [saveWpConfigState, saveWpConfigFormAction] = useFormState(saveWordPressConfigAction, { success: false });
+  const [addFeedState, addFeedFormAction] = useActionState(addFeedAction, { success: false });
+  const [saveWpConfigState, saveWpConfigFormAction] = useActionState(saveWordPressConfigAction, { success: false });
 
   useEffect(() => {
     if (addFeedState?.message) {
@@ -252,3 +251,4 @@ export function DashboardClient({ initialFeeds, initialWordPressConfig, initialP
     </div>
   );
 }
+
