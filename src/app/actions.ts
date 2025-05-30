@@ -15,7 +15,7 @@ import {
   addProcessedArticleGuid,
   addProcessingLogEntry,
   updateFeed,
-  getProcessingLog, // Added import
+  getProcessingLog,
 } from '@/lib/config-storage';
 import { summarizeArticle } from '@/ai/flows/summarize-article';
 import { postToWordPress } from '@/lib/wordpress';
@@ -97,29 +97,31 @@ export async function triggerProcessingAction(): Promise<{ success: boolean; mes
   const wpConfig = await getWordPressConfig();
   const processedGuids = await getProcessedArticleGuids();
   const newLogEntries: ProcessedArticleLogEntry[] = [];
+  let processingMessageSuffix = '';
 
   if (!wpConfig) {
     const log = await addProcessingLogEntry({
-      articleGuid: 'system',
-      articleTitle: 'Processing Error',
+      articleGuid: 'system-wp-config',
+      articleTitle: 'WordPress Configuration Info',
       feedUrl: 'N/A',
-      status: 'error',
-      errorMessage: 'WordPress configuration not found. Please set it up first.',
+      status: 'pending', // Using 'pending' for informational, maps to Info icon
+      errorMessage: 'WordPress configuration not found. Articles will be summarized but not posted to WordPress.',
     });
     newLogEntries.push(log);
-    return { success: false, message: 'WordPress configuration not found.', newLogEntries };
+    processingMessageSuffix = " WordPress posting was skipped due to missing configuration.";
+    // Continue processing even if WordPress config is missing
   }
 
   if (feeds.length === 0) {
      const log = await addProcessingLogEntry({
-      articleGuid: 'system',
+      articleGuid: 'system-no-feeds',
       articleTitle: 'No Feeds',
       feedUrl: 'N/A',
       status: 'error',
       errorMessage: 'No RSS feeds configured. Please add feeds to process.',
     });
     newLogEntries.push(log);
-    return { success: false, message: 'No RSS feeds configured.', newLogEntries };
+    return { success: false, message: 'No RSS feeds configured.' + processingMessageSuffix, newLogEntries };
   }
 
   let articlesProcessedCount = 0;
@@ -130,7 +132,7 @@ export async function triggerProcessingAction(): Promise<{ success: boolean; mes
       await updateFeed({ ...feed, lastFetched: new Date().toISOString() });
 
       for (const item of (parsedFeed.items as ArticleItem[])) {
-        const articleGuid = item.guid || item.link; // Use guid, fallback to link
+        const articleGuid = item.guid || item.link;
         if (!articleGuid || processedGuids.has(articleGuid)) {
           continue;
         }
@@ -138,7 +140,7 @@ export async function triggerProcessingAction(): Promise<{ success: boolean; mes
         articlesProcessedCount++;
         const articleContentToSummarize = item.content || item.contentSnippet || item.title || '';
         
-        if (articleContentToSummarize.length < 50) { // Too short to summarize
+        if (articleContentToSummarize.length < 50) {
           const log = await addProcessingLogEntry({
             articleGuid,
             articleTitle: item.title || 'Untitled Article',
@@ -169,6 +171,7 @@ export async function triggerProcessingAction(): Promise<{ success: boolean; mes
           continue;
         }
         
+        // Log summary success first
         const logSummary = await addProcessingLogEntry({
           articleGuid,
           articleTitle: item.title || 'Untitled Article',
@@ -176,41 +179,58 @@ export async function triggerProcessingAction(): Promise<{ success: boolean; mes
           status: 'summarized',
           summary: aiResponse.summary,
           isSuitable: true,
+          // postedToWordPress will be updated if posting is successful
         });
         newLogEntries.push(logSummary);
 
-        // Post to WordPress
-        const postResult = await postToWordPress(wpConfig, {
-          title: item.title || 'Summarized Article',
-          content: aiResponse.summary,
-          status: 'publish',
-        });
+        // Attempt to post to WordPress only if config is available
+        if (wpConfig) {
+          const postResult = await postToWordPress(wpConfig, {
+            title: item.title || 'Summarized Article',
+            content: aiResponse.summary,
+            status: 'publish',
+          });
 
-        if (postResult.success) {
-          const logPost = await addProcessingLogEntry({
-            articleGuid,
-            articleTitle: item.title || 'Untitled Article',
-            feedUrl: feed.url,
-            status: 'posted',
-            summary: aiResponse.summary,
-            isSuitable: true,
-            postedToWordPress: true,
-            wordPressPostUrl: postResult.postUrl,
-          });
-          newLogEntries.push(logPost);
-        } else {
-          const logError = await addProcessingLogEntry({
-            articleGuid,
-            articleTitle: item.title || 'Untitled Article',
-            feedUrl: feed.url,
-            status: 'error',
-            summary: aiResponse.summary,
-            isSuitable: true,
-            postedToWordPress: false,
-            errorMessage: `WordPress posting failed: ${postResult.error}`,
-          });
-          newLogEntries.push(logError);
+          if (postResult.success) {
+            // Update the existing log entry or add a new 'posted' one.
+            // For simplicity, let's add a new 'posted' log entry if it's a distinct step.
+            // Or, update the 'summarized' log. Let's add a 'posted' entry.
+             const logPost = await addProcessingLogEntry({
+              articleGuid, // Same GUID
+              articleTitle: item.title || 'Untitled Article',
+              feedUrl: feed.url,
+              status: 'posted',
+              summary: aiResponse.summary, // Keep summary for context
+              isSuitable: true,
+              postedToWordPress: true,
+              wordPressPostUrl: postResult.postUrl,
+            });
+            // Remove the previous 'summarized' log for this article to avoid duplicate-like entries
+            const index = newLogEntries.findIndex(l => l.id === logSummary.id);
+            if (index > -1) newLogEntries.splice(index, 1);
+            newLogEntries.push(logPost);
+
+          } else {
+            // Posting failed, log error for this article
+            const logError = await addProcessingLogEntry({
+              articleGuid,
+              articleTitle: item.title || 'Untitled Article',
+              feedUrl: feed.url,
+              status: 'error',
+              summary: aiResponse.summary,
+              isSuitable: true,
+              postedToWordPress: false,
+              errorMessage: `WordPress posting failed: ${postResult.error}`,
+            });
+             // Remove the previous 'summarized' log for this article
+            const index = newLogEntries.findIndex(l => l.id === logSummary.id);
+            if (index > -1) newLogEntries.splice(index, 1);
+            newLogEntries.push(logError);
+          }
         }
+        // If wpConfig is not present, the article remains 'summarized' and not posted.
+        // The `postedToWordPress` field on the 'summarized' log will be false/undefined by default.
+        
         await addProcessedArticleGuid(articleGuid);
       }
     } catch (error) {
@@ -227,19 +247,20 @@ export async function triggerProcessingAction(): Promise<{ success: boolean; mes
   }
   
   revalidatePath('/');
+
   if (articlesProcessedCount === 0 && feeds.length > 0) {
     const log = await addProcessingLogEntry({
-        articleGuid: 'system',
+        articleGuid: 'system-no-new-articles',
         articleTitle: 'No New Articles',
         feedUrl: 'N/A',
-        status: 'unsuitable', // Using 'unsuitable' as a generic "nothing to do"
+        status: 'pending', 
         errorMessage: 'No new articles found in configured feeds.',
     });
     newLogEntries.push(log);
-    return { success: true, message: 'Processing complete. No new articles found.', newLogEntries };
+    return { success: true, message: 'Processing complete. No new articles found.' + processingMessageSuffix, newLogEntries };
   }
 
-  return { success: true, message: `Processing complete. Checked ${feeds.length} feeds. Processed ${articlesProcessedCount} new articles.`, newLogEntries };
+  return { success: true, message: `Processing complete. Checked ${feeds.length} feeds. Processed ${articlesProcessedCount} new articles.` + processingMessageSuffix, newLogEntries };
 }
 
 // Action to get initial data for the client component
